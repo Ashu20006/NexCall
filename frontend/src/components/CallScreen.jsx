@@ -60,7 +60,6 @@ export default function CallScreen({
           </div>
         )}
 
-        {/* Remote name tag */}
         {remoteName && (
           <div className="remote-nametag">
             <span className="nametag-dot" />
@@ -69,21 +68,23 @@ export default function CallScreen({
         )}
       </div>
 
-      {/* Local video (small PiP) */}
+      {/* Local video (PiP) — always in DOM, hidden via CSS when off */}
       <div className={`local-pip ${isVideoOff ? "video-off" : ""}`}>
-        {isVideoOff ? (
+        {/* Video always mounted so srcObject is never lost */}
+        <video
+          ref={localRef}
+          className="local-video"
+          autoPlay
+          playsInline
+          muted
+          style={{ display: isVideoOff ? "none" : "block" }}
+        />
+        {/* Overlay shown when video is off */}
+        {isVideoOff && (
           <div className="pip-off">
             <span>📷</span>
             <span style={{ fontSize: 11 }}>Off</span>
           </div>
-        ) : (
-          <video
-            ref={localRef}
-            className="local-video"
-            autoPlay
-            playsInline
-            muted
-          />
         )}
         <div className="pip-label">You</div>
       </div>

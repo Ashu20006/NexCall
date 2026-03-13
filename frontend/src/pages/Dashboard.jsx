@@ -2,17 +2,28 @@ import { useState } from "react";
 import "./Dashboard.css";
 
 function getInitials(name = "") {
-  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 }
 
 const AVATAR_COLORS = [
-  "#6c63ff", "#3b82f6", "#ec4899", "#f59e0b",
-  "#10b981", "#ef4444", "#8b5cf6", "#06b6d4",
+  "#6c63ff",
+  "#3b82f6",
+  "#ec4899",
+  "#f59e0b",
+  "#10b981",
+  "#ef4444",
+  "#8b5cf6",
+  "#06b6d4",
 ];
 
 function avatarColor(str = "") {
   let hash = 0;
-  for (const c of str) hash = c.charCodeAt(0) + ((hash << 5) - hash);
+  for (const c of str) hash = c.charCodeAt(0) + (hash << 5) - hash;
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
@@ -34,7 +45,11 @@ export default function Dashboard({ user, onlineUsers, callUser, onLogout }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const peers = onlineUsers.filter((id) => id !== user.id);
+  const peers = Array.isArray(onlineUsers)
+    ? onlineUsers.filter((u) =>
+        typeof u === "string" ? u !== user.id : u.id !== user.id
+      )
+    : [];
 
   return (
     <div className="dashboard">
@@ -87,7 +102,6 @@ export default function Dashboard({ user, onlineUsers, callUser, onLogout }) {
 
       {/* Main */}
       <main className="main">
-        {/* Header */}
         <div className="main-header">
           <div>
             <h1 className="main-title">Good day, {user.name.split(" ")[0]} 👋</h1>
@@ -97,7 +111,6 @@ export default function Dashboard({ user, onlineUsers, callUser, onLogout }) {
           </div>
         </div>
 
-        {/* Call by ID card */}
         <div className="call-card">
           <div className="call-card-inner">
             <div className="call-card-icon">📞</div>
@@ -124,7 +137,6 @@ export default function Dashboard({ user, onlineUsers, callUser, onLogout }) {
           </div>
         </div>
 
-        {/* Online users */}
         <div className="online-section">
           <div className="section-header">
             <h2 className="section-title">Online Now</h2>
@@ -139,32 +151,40 @@ export default function Dashboard({ user, onlineUsers, callUser, onLogout }) {
             </div>
           ) : (
             <div className="users-grid">
-              {peers.map((uid) => (
-                <div key={uid} className="user-card">
-                  <div className="user-card-top">
-                    <div
-                      className="avatar"
-                      style={{
-                        width: 52,
-                        height: 52,
-                        fontSize: 20,
-                        background: avatarColor(uid),
-                        color: "#fff",
-                      }}
-                    >
-                      U
+              {peers.map((peer) => {
+                const { id, name } =
+                  typeof peer === "string" ? { id: peer, name: peer } : peer;
+
+                return (
+                  <div key={id} className="user-card">
+                    <div className="user-card-top">
+                      <div
+                        className="avatar"
+                        style={{
+                          width: 52,
+                          height: 52,
+                          fontSize: 20,
+                          background: avatarColor(id),
+                          color: "#fff",
+                        }}
+                      >
+                        {getInitials(name)}
+                      </div>
+                      <div className="user-online-dot" />
                     </div>
-                    <div className="user-online-dot" />
+
+                    <div className="user-card-name">{name}</div>
+                    <div className="user-card-id">{id}</div>
+
+                    <button
+                      className="btn btn-primary user-call-btn"
+                      onClick={() => callUser(id)}
+                    >
+                      📹 Call
+                    </button>
                   </div>
-                  <div className="user-card-id">{uid.slice(0, 10)}…</div>
-                  <button
-                    className="btn btn-primary user-call-btn"
-                    onClick={() => callUser(uid)}
-                  >
-                    📹 Call
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

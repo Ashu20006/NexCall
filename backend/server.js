@@ -76,29 +76,39 @@ const io = new Server(server, {
 });
 
 /* ── Online user registry ── */
-// userId → Set<socketId>
+// userId → { name: string, sockets: Set<socketId> }
 const userSockets = new Map();
 
-const addSocket = (userId, socketId) => {
-  if (!userSockets.has(userId)) userSockets.set(userId, new Set());
-  userSockets.get(userId).add(socketId);
+const addSocket = (userId, socketId, userName = "Unknown") => {
+  if (!userSockets.has(userId)) {
+    userSockets.set(userId, { name: userName, sockets: new Set() });
+  }
+  const entry = userSockets.get(userId);
+  entry.name = userName || entry.name;
+  entry.sockets.add(socketId);
 };
 
 const removeSocket = (userId, socketId) => {
-  const sockets = userSockets.get(userId);
-  if (!sockets) return;
-  sockets.delete(socketId);
-  if (sockets.size === 0) userSockets.delete(userId);
+  const entry = userSockets.get(userId);
+  if (!entry) return;
+  entry.sockets.delete(socketId);
+  if (entry.sockets.size === 0) userSockets.delete(userId);
 };
 
-const getOnlineUsers = () => Array.from(userSockets.keys());
+const getOnlineUsers = () =>
+  Array.from(userSockets.entries()).map(([id, entry]) => ({
+    id,
+    name: entry.name || "Unknown",
+  }));
 
 const resolveTargets = ({ to, toSocketId, excludeSocketId }) => {
   if (toSocketId) {
     return toSocketId === excludeSocketId ? [] : [toSocketId];
   }
   if (!to || !userSockets.has(to)) return [];
-  return Array.from(userSockets.get(to)).filter((s) => s !== excludeSocketId);
+  return Array.from(userSockets.get(to).sockets).filter(
+    (s) => s !== excludeSocketId
+  );
 };
 
 io.on("connection", (socket) => {
@@ -112,9 +122,9 @@ io.on("connection", (socket) => {
 
     socket.data.userId = userId;
     socket.data.userName = userName || "Unknown";
-    addSocket(userId, socket.id);
+    addSocket(userId, socket.id, socket.data.userName);
 
-    console.log(`[socket] join  user=${userId}  socket=${socket.id}`);
+    console.log(`[socket] join  user=${userId} name=${socket.data.userName} socket=${socket.id}`);
     io.emit("online-users", getOnlineUsers());
   });
 
