@@ -11,20 +11,9 @@ const connectDB = require("./config/db");
 const app = express();
 
 /* ── CORS ── */
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean)
-  .concat(["http://localhost:5173", "http://localhost:4173"]);
-
 app.use(
   cors({
-    origin: (origin, cb) => {
-      // allow requests with no origin (mobile, curl, etc.)
-      if (!origin) return cb(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-      cb(new Error(`CORS blocked: ${origin}`));
-    },
+    origin: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
@@ -74,11 +63,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-      cb(new Error(`Socket CORS blocked: ${origin}`));
-    },
+    origin: true,
     methods: ["GET", "POST"],
     credentials: true,
   },
