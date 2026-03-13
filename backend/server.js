@@ -30,9 +30,6 @@ app.get("/", (_, res) => res.send("NexCall backend is running ✓"));
 
 /* ── ICE servers endpoint — returns free Metered TURN credentials ── */
 app.get("/api/ice-servers", (_, res) => {
-  // Using open/public STUN + Metered free TURN via env-injected credentials
-  // Set METERED_API_KEY in your Render env vars to get dynamic credentials
-  // Falls back to STUN-only if no key is set (still works on most networks)
   const servers = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
@@ -40,20 +37,27 @@ app.get("/api/ice-servers", (_, res) => {
     { urls: "stun:stun3.l.google.com:19302" },
     { urls: "stun:stun4.l.google.com:19302" },
     { urls: "stun:openrelay.metered.ca:80" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "655c7b0f1f9e3a907f2fdc0d",
+      credential: "YdE6mAaOdlVa1Fyq",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:80?transport=tcp",
+      username: "655c7b0f1f9e3a907f2fdc0d",
+      credential: "YdE6mAaOdlVa1Fyq",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "655c7b0f1f9e3a907f2fdc0d",
+      credential: "YdE6mAaOdlVa1Fyq",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "655c7b0f1f9e3a907f2fdc0d",
+      credential: "YdE6mAaOdlVa1Fyq",
+    },
   ];
-
-  const key = process.env.METERED_API_KEY;
-  const user = process.env.TURN_USERNAME;
-  const cred = process.env.TURN_CREDENTIAL;
-
-  if (user && cred) {
-    servers.push(
-      { urls: "turn:openrelay.metered.ca:80", username: user, credential: cred },
-      { urls: "turn:openrelay.metered.ca:80?transport=tcp", username: user, credential: cred },
-      { urls: "turn:openrelay.metered.ca:443", username: user, credential: cred },
-      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: user, credential: cred }
-    );
-  }
 
   res.json({ iceServers: servers });
 });
