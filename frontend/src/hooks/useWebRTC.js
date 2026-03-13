@@ -5,27 +5,33 @@ const BACKEND_URL =
     ? "http://localhost:5000"
     : import.meta.env.VITE_BACKEND_URL || "";
 
-// Fetch ICE servers from backend (includes free TURN if configured)
 async function fetchIceServers() {
   try {
     const res = await fetch(`${BACKEND_URL}/api/ice-servers`);
     const data = await res.json();
     return data.iceServers;
   } catch {
-    // fallback to public STUN only
     return [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
     ];
   }
 }
 
 export function useWebRTC({ socketRef, onCallEnd }) {
   const peerRef = useRef(null);
-  const pendingCandidates = useRef([]);
+
+  // Candidates received from remote before remoteDescription is set
+  const pendingIncoming = useRef([]);
+
+  // Candidates we generated before we knew the remote socket ID
+  const pendingOutgoing = useRef([]);
+
   const remoteSocketIdRef = useRef(null);
 
-  const [callState, setCallState] = useState("idle"); // idle | calling | in-call
+  const [callState, setCallState] = useState("idle");
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
@@ -35,13 +41,23 @@ export function useWebRTC({ socketRef, onCallEnd }) {
   const closePeer = useCallback(() => {
     peerRef.current?.close();
     peerRef.current = null;
-    pendingCandidates.current = [];
+    pendingIncoming.current = [];
+    pendingOutgoing.current = [];
     remoteSocketIdRef.current = null;
   }, []);
 
   const stopLocalStream = useCallback((stream) => {
     stream?.getTracks().forEach((t) => t.stop());
   }, []);
+
+  // Flush outgoing candidates once we know the remote socket ID
+  const flushOutgoing = useCallback((toSocketId) => {
+    if (!pendingOutgoing.current.length) return;
+    pendingOutgoing.current.forEach((candidate) => {
+      socketRef.current?.emit("ice-candidate", { toSocketId, candidate });
+    });
+    pendingOutgoing.current = [];
+  }, [socketRef]);
 
   const getMedia = useCallback(async () => {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -62,11 +78,17 @@ export function useWebRTC({ socketRef, onCallEnd }) {
     };
 
     pc.onicecandidate = (e) => {
-      if (e.candidate && remoteSocketIdRef.current) {
+      if (!e.candidate) return;
+
+      if (remoteSocketIdRef.current) {
+        // We know the remote socket — send immediately
         socketRef.current?.emit("ice-candidate", {
           toSocketId: remoteSocketIdRef.current,
           candidate: e.candidate,
         });
+      } else {
+        // Don't know remote socket yet — buffer and send once we do
+        pendingOutgoing.current.push(e.candidate);
       }
     };
 
@@ -84,9 +106,12 @@ export function useWebRTC({ socketRef, onCallEnd }) {
 
   const initiateCall = useCallback(async (targetUserId, callerInfo) => {
     setCallState("calling");
+    pendingIncoming.current = [];
+    pendingOutgoing.current = [];
+    remoteSocketIdRef.current = null;
+
     const stream = await getMedia();
     const pc = await buildPeer();
-
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
     const offer = await pc.createOffer();
@@ -101,6 +126,10 @@ export function useWebRTC({ socketRef, onCallEnd }) {
   }, [getMedia, buildPeer, socketRef]);
 
   const acceptCall = useCallback(async (incomingCall) => {
+    pendingIncoming.current = [];
+    pendingOutgoing.current = [];
+
+    // We know the caller's socket ID immediately
     remoteSocketIdRef.current = incomingCall.fromSocketId;
     setCallState("in-call");
 
@@ -110,11 +139,11 @@ export function useWebRTC({ socketRef, onCallEnd }) {
 
     await pc.setRemoteDescription(incomingCall.offer);
 
-    // flush buffered candidates
-    for (const c of pendingCandidates.current) {
+    // Flush any incoming candidates buffered before setRemoteDescription
+    for (const c of pendingIncoming.current) {
       try { await pc.addIceCandidate(c); } catch {}
     }
-    pendingCandidates.current = [];
+    pendingIncoming.current = [];
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -123,27 +152,41 @@ export function useWebRTC({ socketRef, onCallEnd }) {
       toSocketId: incomingCall.fromSocketId,
       answer,
     });
-  }, [getMedia, buildPeer, socketRef]);
 
+    // Flush any outgoing candidates that fired before answer was sent
+    // (remoteSocketIdRef is already set so this is a safety flush)
+    flushOutgoing(incomingCall.fromSocketId);
+  }, [getMedia, buildPeer, socketRef, flushOutgoing]);
+
+  // Called when caller receives the answer
   const onCallAnswered = useCallback(async ({ answer, fromSocketId }) => {
     if (!peerRef.current) return;
+
+    // Now we know the answerer's socket ID
     remoteSocketIdRef.current = fromSocketId;
     setCallState("in-call");
 
     await peerRef.current.setRemoteDescription(answer);
 
-    for (const c of pendingCandidates.current) {
+    // Flush incoming candidates buffered before we had remote description
+    for (const c of pendingIncoming.current) {
       try { await peerRef.current.addIceCandidate(c); } catch {}
     }
-    pendingCandidates.current = [];
-  }, []);
+    pendingIncoming.current = [];
 
+    // Flush outgoing candidates that fired before we knew the answerer's socket
+    flushOutgoing(fromSocketId);
+  }, [flushOutgoing]);
+
+  // Called when we receive a remote ICE candidate
   const onIceCandidate = useCallback(async ({ candidate }) => {
     if (!peerRef.current) return;
+
     if (peerRef.current.remoteDescription) {
       try { await peerRef.current.addIceCandidate(candidate); } catch {}
     } else {
-      pendingCandidates.current.push(candidate);
+      // Buffer until setRemoteDescription is called
+      pendingIncoming.current.push(candidate);
     }
   }, []);
 
